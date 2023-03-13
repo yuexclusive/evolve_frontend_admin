@@ -1,13 +1,14 @@
 use crate::util::common;
-use crate::util::error::ErrorKind;
-use crate::util::request;
 use gloo::timers::callback::Timeout;
 use serde::Serialize;
+use user_cli::apis::user_controller_api;
+use user_cli::models;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 
 const DEFAULT_CODE_BUTTON_TEXT: &str = "Generate Code";
-const DEFAULT_CODE_BUTTON_CLASS: &str = "button is-block is-fullwidth is-primary is-medium is-rounded";
+const DEFAULT_CODE_BUTTON_CLASS: &str =
+    "button is-block is-fullwidth is-primary is-medium is-rounded";
 
 #[derive(Serialize)]
 pub struct SendEmailCodeReq<'a> {
@@ -137,9 +138,17 @@ impl Component for ForgetPwd {
                         }
 
                         let req = self.req.clone();
+                        let req = models::ChangePasswordReq {
+                            code: req.code,
+                            email: req.email,
+                            pwd: req.pwd,
+                        };
                         ctx.link().send_future(async move {
-                            match request::put::<(), _>(request::Host::ApiBase, "/change_pwd", &req)
-                                .await
+                            match user_controller_api::change_pwd(
+                                &common::get_cli_config_without_token().unwrap(),
+                                req,
+                            )
+                            .await
                             {
                                 Ok(_) => ForgetPwdMsg::HandleChangePwdSuccess,
                                 Err(err) => ForgetPwdMsg::HandleChangePwdError(Box::new(err)),
@@ -148,25 +157,30 @@ impl Component for ForgetPwd {
                     }
                     ValidateExistEmailOperation::SendEmailCode => {
                         let email = self.req.email.clone();
+                        let req = models::SendEmailCodeReq {
+                            email,
+                            from: models::SendEmailCodeFrom::ChangePwd,
+                        };
 
                         self.code_button_class = "button is-block is-fullwidth is-primary is-medium is-rounded is-loading".to_string();
                         ctx.link().send_future(async move {
-                            match request::post::<usize, _>(
-                                request::Host::ApiBase,
-                                "/send_email_code",
-                                &SendEmailCodeReq {
-                                    email: &email,
-                                    from: "ChangePwd",
-                                },
+                            match user_controller_api::send_email_code(
+                                &common::get_cli_config_without_token().unwrap(),
+                                req,
                             )
                             .await
                             {
                                 Ok(res) => {
-                                    ForgetPwdMsg::HandleSendEmailCodeSuccess(res.data.unwrap())
+                                    ForgetPwdMsg::HandleSendEmailCodeSuccess(res.data as usize)
                                 }
                                 Err(err) => match err {
-                                    ErrorKind::Hint(_) => {
-                                        ForgetPwdMsg::HandleSendEmailCodeHint(Box::new(err))
+                                    user_cli::apis::Error::ResponseError(ref f) => {
+                                        if f.status.as_u16() == 452 {
+                                            // hint
+                                            ForgetPwdMsg::HandleSendEmailCodeHint(Box::new(err))
+                                        } else {
+                                            ForgetPwdMsg::HandleSendEmailCodeError(Box::new(err))
+                                        }
                                     }
                                     _ => ForgetPwdMsg::HandleSendEmailCodeError(Box::new(err)),
                                 },
@@ -244,7 +258,9 @@ impl Component for ForgetPwd {
                     self.code_button_text = expired_secs.to_string();
                     let link = ctx.link().clone();
                     Timeout::new(1000, move || {
-                        link.send_message(ForgetPwdMsg::HandleSendEmailCodeSuccess(expired_secs - 1))
+                        link.send_message(ForgetPwdMsg::HandleSendEmailCodeSuccess(
+                            expired_secs - 1,
+                        ))
                     })
                     .forget();
                 } else {

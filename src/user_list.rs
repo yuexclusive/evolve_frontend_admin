@@ -5,10 +5,13 @@ use crate::user_form::UserForm;
 use crate::user_list_item::UserListItem;
 use crate::util::request;
 
-use serde::{Deserialize, Serialize};
+use crate::util::common;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use user_cli::apis::user_controller_api;
+use user_cli::models::{SearchedUser, User};
 use yew::prelude::*;
 use yew::Properties;
 
@@ -33,37 +36,6 @@ pub enum UserListMsg {
     HandleDeleteSuccess,
     HandleDeleteFail(Box<dyn std::error::Error>),
     KeywordChange(web_sys::KeyboardEvent),
-}
-// #[derive(Serialize, Component)]
-#[derive(Deserialize, Serialize, PartialEq, Clone, Debug, Default)]
-pub struct User {
-    pub id: i64,
-    pub r#type: String,
-    pub email: String,
-    pub status: String,
-    pub name: Option<String>,
-    pub mobile: Option<String>,
-    pub laston: Option<String>,
-    pub created_at: String,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, PartialEq, Clone, Debug, Default)]
-pub struct UserFormatter {
-    pub r#type: String,
-    pub email: String,
-    pub status: String,
-    pub name: Option<String>,
-    pub mobile: Option<String>,
-    pub laston: Option<String>,
-    pub created_at: String,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, PartialEq, Clone, Debug, Default)]
-pub struct SearchedUser {
-    pub user: User,
-    pub formatter: UserFormatter,
 }
 
 #[derive(Serialize)]
@@ -101,24 +73,22 @@ impl Component for UserList {
             UserListMsg::Refresh => {
                 self.selected_row = None;
                 self.loading = true;
+
+                let key_word = self.key_word.clone().unwrap_or_default();
                 let page = ctx.props().page.borrow();
-                let params = vec![
-                    ("key_word", self.key_word.clone().unwrap_or_default()),
-                    ("index", page.index.to_string()),
-                    ("size", page.size.to_string()),
-                ];
+                let index = page.index;
+                let size = page.size;
 
                 ctx.link().send_future(async move {
-                    match request::get::<Vec<SearchedUser>, _, _>(
-                        request::Host::ApiBase,
-                        "/user/search",
-                        Some(params),
+                    match user_controller_api::search(
+                        &common::get_cli_config().unwrap(),
+                        &key_word,
+                        index as i64,
+                        size as i64,
                     )
                     .await
                     {
-                        Ok(res) => {
-                            UserListMsg::HandleSearchSuccess(res.data.unwrap(), res.total.unwrap())
-                        }
+                        Ok(res) => UserListMsg::HandleSearchSuccess(res.data, res.total as usize),
                         Err(err) => UserListMsg::HandleSearchFail(Box::new(err)),
                     }
                 });
@@ -205,7 +175,7 @@ impl Component for UserList {
         let selected_id = self.selected_row.clone().map(|x| x.id);
         html! {
         <>
-        <MessageList value = {self.messages.clone()} ws = false/>
+        <MessageList value = {self.messages.clone()} ws = true/>
         if let Some(v) = &self.selected_row  {
             <UserForm value = {RefCell::new(v.clone())} closed={self.user_form_closed.clone()} update = {ctx.link().callback(|_|{UserListMsg::Refresh})}/>
             <ConfirmForm closed={self.confirm_form_closed.clone()} confirm = {ctx.link().callback(|_|{UserListMsg::DeleteConfirm})} content = {"Deleted users <b>can not</b> be recovered!!!<br/> are you sure you want to delete it?"}/>

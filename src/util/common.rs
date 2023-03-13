@@ -4,6 +4,7 @@ use crate::util::request;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json;
+use user_cli::apis::configuration::{ApiKey, Configuration};
 use yew::virtual_dom::VNode;
 
 pub type BasicResult<T, E = ErrorKind> = Result<T, E>;
@@ -89,6 +90,22 @@ pub fn get_token() -> BasicResult<String> {
     let str = get_local_storage("token")
         .ok_or(ErrorKind::OtherError(String::from("get token failed")))?;
     Ok(str)
+}
+
+pub fn get_cli_config_without_token() -> BasicResult<Configuration> {
+    let mut ret = Configuration::default();
+    ret.base_path = "http://localhost:8881".to_string();
+    Ok(ret)
+}
+
+pub fn get_cli_config() -> BasicResult<Configuration> {
+    let mut ret = Configuration::default();
+    ret.base_path = "http://localhost:8881".to_string();
+    ret.api_key = Some(ApiKey {
+        prefix: Some("Bearer".to_string()),
+        key: get_token()?,
+    });
+    Ok(ret)
 }
 
 pub fn get_current_user() -> BasicResult<CurrentUser> {

@@ -1,26 +1,13 @@
 use crate::util::common;
-use crate::util::error::ErrorKind;
-use crate::util::request;
 use gloo::timers::callback::Timeout;
-use serde::Serialize;
+use user_cli::apis::user_controller_api;
+use user_cli::models;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 
 const DEFAULT_CODE_BUTTON_TEXT: &str = "Generate Code";
-const DEFAULT_CODE_BUTTON_CLASS: &str = "button is-block is-fullwidth is-primary is-medium is-rounded";
-
-#[derive(Serialize)]
-pub struct SendEmailCodeReq<'a> {
-    email: &'a str,
-    from: &'a str,
-}
-
-#[derive(Serialize, PartialEq, Clone, Debug, Default)]
-pub struct RegisterReq {
-    email: String,
-    pwd: String,
-    code: String,
-}
+const DEFAULT_CODE_BUTTON_CLASS: &str =
+    "button is-block is-fullwidth is-primary is-medium is-rounded";
 
 #[derive(Debug)]
 pub enum ValidStatus {
@@ -31,7 +18,9 @@ pub enum ValidStatus {
 
 pub struct Register {
     refs: Vec<NodeRef>,
-    req: RegisterReq,
+    email: String,
+    pwd: String,
+    code: String,
     email_valid: ValidStatus,
     pwd_valid: ValidStatus,
     pwd_confirm_valid: ValidStatus,
@@ -86,7 +75,9 @@ impl Component for Register {
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
             refs: vec![NodeRef::default()],
-            req: Default::default(),
+            email: Default::default(),
+            pwd: Default::default(),
+            code: Default::default(),
             email_valid: ValidStatus::None,
             pwd_valid: ValidStatus::None,
             pwd_confirm_valid: ValidStatus::None,
@@ -104,7 +95,7 @@ impl Component for Register {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             RegisterMsg::ValidateNotExistEmail(operation) => {
-                let email = self.req.email.clone();
+                let email = self.email.clone();
                 ctx.link().send_future(async move {
                     match common::validate_not_exist_email(&email).await {
                         Ok(_) => RegisterMsg::ValidateNotExistEmailSuccess(operation),
@@ -119,27 +110,36 @@ impl Component for Register {
                 match operation {
                     ValidateNotExistEmailOperation::Nothing => (),
                     ValidateNotExistEmailOperation::Register => {
-                        if let Err(e) = common::validate_code(&self.req.code) {
+                        if let Err(e) = common::validate_code(&self.code) {
                             self.code_valid = ValidStatus::InValid(format!("{}", e));
                             return true;
                         }
 
-                        if let Err(e) = common::validate_pwd(&self.req.pwd) {
+                        if let Err(e) = common::validate_pwd(&self.pwd) {
                             self.pwd_valid = ValidStatus::InValid(format!("{}", e));
                             return true;
                         }
 
                         if let Err(e) =
-                            common::validate_pwd_confirm(&self.req.pwd, &self.password_confirm)
+                            common::validate_pwd_confirm(&self.pwd, &self.password_confirm)
                         {
                             self.pwd_confirm_valid = ValidStatus::InValid(format!("{}", e));
                             return true;
                         }
 
-                        let req = self.req.clone();
+                        let req = models::RegisterReq {
+                            code: self.code.clone(),
+                            email: self.email.clone(),
+                            pwd: self.pwd.clone(),
+                            mobile: None,
+                            name: None,
+                        };
                         ctx.link().send_future(async move {
-                            match request::post::<(), _>(request::Host::ApiBase, "/register", &req)
-                                .await
+                            match user_controller_api::register(
+                                &common::get_cli_config_without_token().unwrap(),
+                                req,
+                            )
+                            .await
                             {
                                 Ok(_) => RegisterMsg::HandleRegisterSuccess,
                                 Err(err) => RegisterMsg::HandleRegisterError(Box::new(err)),
@@ -147,26 +147,31 @@ impl Component for Register {
                         });
                     }
                     ValidateNotExistEmailOperation::SendEmailCode => {
-                        let email = self.req.email.clone();
+                        let email = self.email.clone();
 
                         self.code_button_class = "button is-block is-fullwidth is-primary is-medium is-rounded is-loading".to_string();
+                        let req = models::SendEmailCodeReq {
+                            email,
+                            from: models::SendEmailCodeFrom::Register,
+                        };
                         ctx.link().send_future(async move {
-                            match request::post::<usize, _>(
-                                request::Host::ApiBase,
-                                "/send_email_code",
-                                &SendEmailCodeReq {
-                                    email: &email,
-                                    from: "Register",
-                                },
+                            let res = user_controller_api::send_email_code(
+                                &common::get_cli_config_without_token().unwrap(),
+                                req,
                             )
-                            .await
-                            {
+                            .await;
+                            match res {
                                 Ok(res) => {
-                                    RegisterMsg::HandleSendEmailCodeSuccess(res.data.unwrap())
+                                    RegisterMsg::HandleSendEmailCodeSuccess(res.data as usize)
                                 }
                                 Err(err) => match err {
-                                    ErrorKind::Hint(_) => {
-                                        RegisterMsg::HandleSendEmailCodeHint(Box::new(err))
+                                    user_cli::apis::Error::ResponseError(ref f) => {
+                                        if f.status.as_u16() == 452 {
+                                            // hint
+                                            RegisterMsg::HandleSendEmailCodeHint(Box::new(err))
+                                        } else {
+                                            RegisterMsg::HandleSendEmailCodeError(Box::new(err))
+                                        }
                                     }
                                     _ => RegisterMsg::HandleSendEmailCodeError(Box::new(err)),
                                 },
@@ -183,7 +188,7 @@ impl Component for Register {
             }
             RegisterMsg::EmailChange(e) => {
                 let el: web_sys::HtmlInputElement = e.target_unchecked_into();
-                self.req.email = el.value();
+                self.email = el.value();
                 ctx.link().send_message(RegisterMsg::ValidateNotExistEmail(
                     ValidateNotExistEmailOperation::Nothing,
                 ));
@@ -191,8 +196,8 @@ impl Component for Register {
             }
             RegisterMsg::CodeChange(e) => {
                 let el: web_sys::HtmlInputElement = e.target_unchecked_into();
-                self.req.code = el.value();
-                self.code_valid = match common::validate_code(&self.req.code) {
+                self.code = el.value();
+                self.code_valid = match common::validate_code(&self.code) {
                     Ok(_) => ValidStatus::Valid,
                     Err(e) => ValidStatus::InValid(format!("{}", e)),
                 };
@@ -200,8 +205,8 @@ impl Component for Register {
             }
             RegisterMsg::PasswordChange(e) => {
                 let el: web_sys::HtmlInputElement = e.target_unchecked_into();
-                self.req.pwd = el.value();
-                self.pwd_valid = match common::validate_pwd(&self.req.pwd) {
+                self.pwd = el.value();
+                self.pwd_valid = match common::validate_pwd(&self.pwd) {
                     Ok(_) => ValidStatus::Valid,
                     Err(e) => ValidStatus::InValid(format!("{}", e)),
                 };
@@ -211,7 +216,7 @@ impl Component for Register {
                 let el: web_sys::HtmlInputElement = e.target_unchecked_into();
                 self.password_confirm = el.value();
                 self.pwd_confirm_valid =
-                    match common::validate_pwd_confirm(&self.req.pwd, &self.password_confirm) {
+                    match common::validate_pwd_confirm(&self.pwd, &self.password_confirm) {
                         Ok(_) => ValidStatus::Valid,
                         Err(e) => ValidStatus::InValid(format!("{}", e)),
                     };
@@ -219,8 +224,8 @@ impl Component for Register {
             }
 
             RegisterMsg::HandleRegisterSuccess => {
-                common::set_local_storage("email", self.req.email.as_str());
-                common::set_local_storage("pwd", self.req.pwd.as_str());
+                common::set_local_storage("email", self.email.as_str());
+                common::set_local_storage("pwd", self.pwd.as_str());
                 common::redirect("/login");
                 false
             }

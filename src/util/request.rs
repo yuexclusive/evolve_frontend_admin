@@ -32,7 +32,7 @@ impl std::fmt::Display for Host {
 fn build_header(req: Request) -> Request {
     let req = req.header("Content-type", "application/json");
     match common::get_token() {
-        Ok(v) => req.header("Authorization", format!("Bearer {}", v).as_str()),
+        Ok(v) => req.header("token", format!("Bearer {}", v).as_str()),
         Err(_) => req,
     }
 }

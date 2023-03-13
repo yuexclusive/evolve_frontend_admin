@@ -1,11 +1,12 @@
+use crate::util::common;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 // use crate::component::message_item::MessageItemValue;
 use crate::component::message_list::{MessageList, MessageListValue, MessageOperate};
-use crate::user_list::User;
-use crate::util::request;
 use std::sync::{Arc, Mutex};
+use user_cli::apis::user_controller_api;
+use user_cli::models::{User, UserUpdateReq};
 use yew::prelude::*;
 use yew::Properties;
 
@@ -60,8 +61,13 @@ impl Component for UserForm {
             }
             UserFormMsg::Update => {
                 let user = ctx.props().value.borrow().clone();
+                let req = UserUpdateReq {
+                    id: user.id,
+                    name: user.name,
+                    mobile: user.mobile,
+                };
                 ctx.link().send_future(async move {
-                    match request::put::<User, _>(request::Host::ApiBase, "/user/update", &user).await
+                    match user_controller_api::update(&common::get_cli_config().unwrap(), req).await
                     {
                         Ok(_) => UserFormMsg::UpdateSuccess,
                         Err(err) => UserFormMsg::UpdateError(Box::new(err)),
@@ -101,7 +107,7 @@ impl Component for UserForm {
                     <div class="field">
                         <label class="label">{"Type"}</label>
                         <div class="control">
-                        <input class="input" value={val.r#type.clone()} type="text" />
+                        <input class="input" value={val.r#type.to_string().clone()} type="text" />
                         </div>
                     </div>
 
@@ -115,7 +121,7 @@ impl Component for UserForm {
                     <div class="field">
                         <label class="label">{"Status"}</label>
                         <div class="control">
-                        <input class="input" value={val.status.clone()} />
+                        <input class="input" value={val.status.to_string().clone()} />
                         </div>
                     </div>
                     </fieldset>

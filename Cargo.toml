@@ -34,8 +34,11 @@ yew = {version = "0", features = ["csr"]}
 yew-router = {version = "0"}
 # html-escape = "0.2.11"
 # openapi = {path = "./openapi"} // can not use by wasm
-utilities = {git = "https://github.com/yuexclusive/utilities", features = ["datetime"]}
+# utilities = {git = "https://github.com/yuexclusive/utilities", features = ["datetime"]}
+user_cli = {path = "../evolve_backend/openapi_cli/user_cli"}
+utilities = {path = "../../utilities", features = ["datetime"]}
 uuid = {version = "1", features = ["v4", "fast-rng", "macro-diagnostics"]}
+lazy_static = "1"
 
 [dependencies.web-sys]
 features = [

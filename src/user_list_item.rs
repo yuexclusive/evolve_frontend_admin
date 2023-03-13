@@ -1,8 +1,7 @@
-use crate::user_list::{SearchedUser, User};
-use std::ops::Deref;
+use crate::util::common;
+use user_cli::models::{SearchedUser, User};
 use yew::prelude::*;
 use yew::Properties;
-use crate::util::common;
 
 pub struct UserListItem;
 
@@ -30,7 +29,7 @@ impl Component for UserListItem {
         match msg {
             UserListItemMsg::Select => {
                 let val = ctx.props().value.clone();
-                ctx.props().onselect.emit(val.user);
+                ctx.props().onselect.emit(*val.user);
                 false
             }
         }
@@ -44,14 +43,14 @@ impl Component for UserListItem {
         html! {
             <tr class = {if is_selected {"is-selected"} else {""}}
              onclick = {ctx.link().callback(|_| UserListItemMsg::Select)} >
-                {common::create_html("td",formatter.r#type.deref())}
-                {common::create_html("td",formatter.email.deref())}
-                {common::create_html("td",formatter.name.as_deref().unwrap_or(""))}
-                {common::create_html("td",formatter.mobile.as_deref().unwrap_or(""))}
-                {common::create_html("td",formatter.laston.as_deref().unwrap_or(""))}
-                {common::create_html("td",formatter.created_at.deref())}
-                {common::create_html("td",formatter.updated_at.as_deref().unwrap_or(""))}
-                {common::create_html("td",formatter.status.deref())}
+                {common::create_html("td",formatter.r#type.as_str())}
+                {common::create_html("td",formatter.email.as_str())}
+                {common::create_html("td",formatter.name.as_str())}
+                {common::create_html("td",formatter.mobile.as_str())}
+                {common::create_html("td",formatter.laston.as_str())}
+                {common::create_html("td",formatter.created_at.as_str())}
+                {common::create_html("td",formatter.updated_at.as_str())}
+                {common::create_html("td",formatter.status.as_str())}
             </tr>
         }
     }

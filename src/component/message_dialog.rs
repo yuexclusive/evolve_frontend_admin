@@ -34,6 +34,9 @@ pub struct MessageDialogProps {
     pub rooms: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
 
     #[prop_or_default]
+    pub session_id: String,
+
+    #[prop_or_default]
     pub messages: Arc<Mutex<HashMap<String, LinkedList<MessageContent>>>>,
 
     #[prop_or_default]
@@ -83,9 +86,8 @@ impl Component for MessageDialog {
                             if let Some(ws_writer) = &ctx.props().ws_writer {
                                 let w1 = ws_writer.clone();
                                 let room = room.to_string();
-                                let user = crate::util::common::get_current_user().unwrap();
-                                let name = user.name.unwrap_or(user.email.clone());
                                 let link = ctx.link().clone();
+                                let session_id = ctx.props().session_id.clone();
                                 spawn_local(async move {
                                     w1.lock()
                                         .unwrap()
@@ -99,7 +101,7 @@ impl Component for MessageDialog {
                                                 id: 0,
                                                 room: room.to_string(),
                                                 from_id: "".to_string(),
-                                                from_name: name,
+                                                from_name: session_id,
                                                 content: content.clone(),
                                                 time: "".to_string(), //chrono::Utc::now().to_default(),
                                                 is_own: Some(()),
